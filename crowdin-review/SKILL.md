@@ -32,7 +32,7 @@ fast path so `list_projects` doesn't need to be called every run):
 | Repo | Crowdin project identifier | Crowdin project ID |
 |---|---|---|
 | SledgeHammerTime (website) | sledgehammertime | 750053 |
-| HammerTimeBot | hammertimebot | |
+| HammerTimeBot | hammertimebot | 510680 |
 
 Source (original) language is English in both projects. Translation file locations differ
 per repo — check that repo's own `crowdin.yml` rather than assuming SledgeHammerTime's
