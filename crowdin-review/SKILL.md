@@ -11,11 +11,33 @@ commenting are separate, confirmed steps at the end.
 
 ## Project
 
-- Crowdin project ID: `750053` (identifier `sledgehammertime`), from `.env`
-  `CROWDIN_PROJECT_ID` / `CROWDIN_PROJECT_IDENTIFIER`. Use these unless the user
-  specifies a different project.
-- Source (original) language is English. Translation files live under `/lang/<code>/*.php`
-  per `crowdin.yml`.
+This skill is shared across multiple repos (currently SledgeHammerTime, the website, and
+HammerTimeBot), each with its own separate Crowdin project — **do not hardcode a project
+ID**. Determine it fresh for the repo you're actually in:
+
+1. Read the current repo's `.env` for `CROWDIN_PROJECT_ID` (a numeric ID) and/or
+   `CROWDIN_PROJECT_IDENTIFIER` (a slug). Either may be present; check `crowdin.yml` in the
+   repo root too for context (source file paths, `preserve_hierarchy`, etc.) so you know
+   what you're auditing.
+2. If `CROWDIN_PROJECT_ID` is present, use it directly.
+3. If only `CROWDIN_PROJECT_IDENTIFIER` is present (no numeric ID — this is
+   HammerTimeBot's situation), resolve it to an ID with `mcp__crowdin__list_projects`
+   (gated behind the `projects_groups` tool set — see "Required `crowdin-tool-sets`" below)
+   and match on the identifier. Cache the mapping in the table below so future runs skip
+   the lookup.
+
+Known project mappings (fill in as repos are audited; keep this in sync — it's the
+fast path so `list_projects` doesn't need to be called every run):
+
+| Repo | Crowdin project identifier | Crowdin project ID |
+|---|---|---|
+| SledgeHammerTime (website) | sledgehammertime | 750053 |
+| HammerTimeBot | hammertimebot | |
+
+Source (original) language is English in both projects. Translation file locations differ
+per repo — check that repo's own `crowdin.yml` rather than assuming SledgeHammerTime's
+`/lang/<code>/*.php` layout; HammerTimeBot for instance uses
+`/src/locales/<code>/*.json`.
 
 ## Discord role mentions
 
@@ -101,10 +123,14 @@ Crowdin tools are found, tell the user the `crowdin` MCP server isn't loaded in 
 (needs a Claude Code restart after `claude mcp add`/config change) and stop.
 
 **Required `crowdin-tool-sets`** (set when the server was registered via `claude mcp add
-... -H "crowdin-tool-sets: ..."`): `string_translations,tasks,translation_status,string_comments,source_strings`.
+... -H "crowdin-tool-sets: ..."`): `string_translations,tasks,translation_status,string_comments,source_strings,projects_groups`.
 `source_strings` is easy to forget but required — without it there is no tool to fetch the
-original English text, and the accuracy check is impossible. If a call to `get_string`/
-`list_strings` is missing from the discovered tools, tell the user to add `source_strings`
+original English text, and the accuracy check is impossible. `projects_groups` is required
+for `list_projects`, used to resolve a project identifier to an ID (see "Project" above) —
+this only became necessary once this skill started being shared across repos with different
+Crowdin projects; a single-project setup could skip it if the ID is always known. If a call
+to `get_string`/`list_strings` is missing from the discovered tools, tell the user to add
+`source_strings`
 to the `crowdin-tool-sets` header (remove + re-add the server, then restart) and stop.
 
 **The `crowdin-tool-sets` header alone is not enough — the underlying Personal Access
@@ -240,6 +266,38 @@ Crowdin updates" — mention that to the user rather than assuming they remember
 
 If no approvals happened this run (e.g. the whole run was report-only, or everything was
 already approved), skip this step — there's nothing new for the workflow to pick up.
+
+## 7. Check the `crowdin/github-action` pin for updates
+
+Run this check every time this skill runs, independent of whether any strings were flagged
+or approved — it's about repo maintenance, not the translation review itself.
+
+`.github/workflows/crowdin.yml` pins `crowdin/github-action` (and `actions/checkout`) to a
+full commit SHA with a `# vX.Y.Z` trailer comment, per the project's SHA-pinning convention
+for third-party actions. Pinned SHAs go stale as new releases ship, so check whether a newer
+release exists:
+
+1. Read the current pin from `.github/workflows/crowdin.yml` — the SHA and the `# vX.Y.Z`
+   comment on the `uses: crowdin/github-action@<sha> # <version>` line.
+2. Get the latest release tag: `gh api repos/crowdin/github-action/releases/latest --jq
+   '.tag_name'`. This is the most efficient method — it's a single small API call, needs no
+   clone, and (unlike listing tags) it respects GitHub's "latest release" semantics so
+   prereleases (e.g. `v3.0.0-next.1`) are excluded automatically.
+3. Resolve that tag to its commit SHA: `gh api repos/crowdin/github-action/commits/<tag>
+   --jq '.sha'`. This one call resolves either a lightweight or annotated tag straight to
+   the commit SHA that `uses:` needs — no separate dereference step, unlike walking
+   `git ls-remote --tags` output by hand.
+4. Compare versions. If the latest release tag differs from the pinned `# vX.Y.Z` comment,
+   report it to the user, e.g. "crowdin/github-action is pinned to v2.16.4, but v3.0.2 is
+   available." Note if it looks like a major version bump — that may carry breaking changes
+   worth a changelog check before updating, not just a mechanical SHA swap.
+5. If the user wants to update, edit the `uses:` line to the new SHA and version comment.
+   This edits a workflow file that affects CI on push — confirm with the user before editing,
+   and don't commit/push it as part of this skill; leave that to the user's normal review
+   flow for the change.
+
+The same two `gh api` calls work for any other SHA-pinned action in the workflow (e.g.
+`actions/checkout`) — swap in that action's `owner/repo` and current tag.
 
 ## Known API details (learned from testing 2026-09-09, project 750053)
 
