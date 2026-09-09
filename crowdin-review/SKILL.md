@@ -16,9 +16,11 @@ HammerTimeBot), each with its own separate Crowdin project — **do not hardcode
 ID**. Determine it fresh for the repo you're actually in:
 
 1. Read the current repo's `.env` for `CROWDIN_PROJECT_ID` (a numeric ID) and/or
-   `CROWDIN_PROJECT_IDENTIFIER` (a slug). Either may be present; check `crowdin.yml` in the
-   repo root too for context (source file paths, `preserve_hierarchy`, etc.) so you know
-   what you're auditing.
+   `CROWDIN_PROJECT_IDENTIFIER` (a slug). **Don't dump the whole file** (e.g. `cat .env`) —
+   it holds other services' API keys and secrets too; grep for just the `CROWDIN_PROJECT_*`
+   lines instead (e.g. `grep '^CROWDIN_PROJECT_' .env`). Check `crowdin.yml` in the repo
+   root too for context (source file paths, `preserve_hierarchy`, etc.) so you know what
+   you're auditing — that file doesn't hold secrets.
 2. If `CROWDIN_PROJECT_ID` is present, use it directly.
 3. If only `CROWDIN_PROJECT_IDENTIFIER` is present (no numeric ID — this is
    HammerTimeBot's situation), resolve it to an ID with `mcp__crowdin__list_projects`
