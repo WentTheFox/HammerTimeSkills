@@ -1,0 +1,13 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "hammertime-skills",
+  "version": "0.1.0",
+  "description": "Shared Claude Code skills for the HammerTime bot and website projects.",
+  "author": {
+    "name": "WentTheFox",
+    "email": "mail@went.tf"
+  },
+  "skills": [
+    "./"
+  ]
+}
