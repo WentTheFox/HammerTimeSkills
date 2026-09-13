@@ -240,11 +240,17 @@ executing, and do it in two independently-confirmable batches:
 
 - **Approve the clean ones** — ask if the user wants the strings that passed all four
   checks approved now. If yes, approve each and report a count.
-- **Flag the failing ones** — ask if the user wants a comment added to each flagged
-  string explaining the specific issue (for translators to see). If yes, post one comment
-  per flagged string with a concise explanation of what's wrong (prefixed with that
-  language's Discord role mention per the "Discord role mentions" table above, if it has
-  one), and report a count.
+- **Flag the failing ones** — first, for each flagged string, call
+  `list_stringasset_comments(projectId, stringId)` and check for an existing **unresolved**
+  `type: "issue"` comment on that string for the same target language. If one already
+  exists, treat that string as a no-op — skip posting a new comment for it, since it's
+  already flagged and waiting on the translator to fix it (re-flagging would just spam the
+  thread and re-ping the role every run until it's fixed). Only ask the user to confirm
+  posting for the strings that don't already have an open issue; if every flagged string
+  already has one, tell the user that and skip the write step entirely. If yes for the
+  remainder, post one comment per flagged string with a concise explanation of what's wrong
+  (prefixed with that language's Discord role mention per the "Discord role mentions" table
+  above, if it has one), and report a count.
 
 Never approve a string that failed any check, even if the user only asked to "approve
 what's ready."
