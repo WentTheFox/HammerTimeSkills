@@ -204,6 +204,39 @@ execute anything and just echoed the task back — resume it (`SendMessage` to i
 with an explicit "you didn't do this, actually call the tools now" instruction rather than
 accepting that result.
 
+### 2b. Newer suggestions on already-approved strings
+
+The `count of approvals = 0` query above has a blind spot: `list_language_translations`
+returns one (the top/approved) translation per string, so a string that already has an
+approved translation never shows up — even when a translator later submitted a fix.
+Confirmed 2026-09-23: fi string 2488 had a broken approved translation (dropped `:offset`)
+and the translator's corrected suggestion sat unapproved for 5+ months, invisible to every
+run, until the translator pinged about it on Discord.
+
+For each language in scope, also run `list_strings` with a string-level CroQL (use
+`limit: 25`-`50` and paginate with `offset` — string `context` fields make responses big):
+```
+count of translations where (language = @language:"<lang>" and count of approvals = 0 and updated > '<cutoff>') > 0 and count of translations where (language = @language:"<lang>" and count of approvals > 0) > 0
+```
+- `<cutoff>` is `'YYYY-MM-DD HH:MM:SS'`. Default to ~30 days ago, or the date of the last
+  run if the user mentions it; for a one-off deep sweep, go back further.
+- Translation-level fields in string CroQL are limited: `updated` is the only date field
+  (`createdAt` and `added` both fail with `croqlInvalidLogic: Identifier '...' is undefined`;
+  `added` exists only on `approvals`). There's no way to compare an unapproved translation's
+  date to the approval's date inside the query, so hits include old, replaced suggestions
+  whose `updated` got bumped. Filter those out per string:
+  `list_translations(projectId, languageId, stringId)` plus
+  `list_translation_approvals(projectId, languageId, stringId)`. Keep the string only if some
+  unapproved translation's `createdAt` is **after** the approved translation's `createdAt`.
+- For each surviving string, fetch the source with `get_string` and run the four checks on
+  **both** the approved translation and the newer suggestion. Report these separately
+  ("possible corrections") with both texts side by side and which one passes. If the newer
+  one passes and the approved one fails, that's a strong signal to switch. If both pass,
+  it's a judgement call for the user, not an automatic approval.
+- Switching is `add_approval(<newer translationId>)`. Crowdin keeps one approved translation
+  per string per language, so this moves the approval off the old one (verified on 2488).
+  It goes in step 5's approval batch, behind the same confirmation.
+
 ## 3. Verify each candidate
 
 Run all four checks below on every (source, translation) pair. Be conservative — only
@@ -243,7 +276,9 @@ This step performs write actions on the user's Crowdin project — always confir
 executing, and do it in two independently-confirmable batches:
 
 - **Approve the clean ones** — ask if the user wants the strings that passed all four
-  checks approved now. If yes, approve each and report a count.
+  checks approved now. If yes, approve each and report a count. List any step 2b
+  "possible corrections" separately in the same question so the user can pick which
+  approvals to switch; never switch one whose newer suggestion failed a check.
 - **Flag the failing ones** — first, for each flagged string, call
   `list_stringasset_comments(projectId, stringId)` and check for an existing **unresolved**
   `type: "issue"` comment on that string for the same target language. If one already
