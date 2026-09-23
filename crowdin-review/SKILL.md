@@ -171,8 +171,12 @@ worked in testing):
 ## 1. Determine scope
 
 - If a language arg was given: resolve it to one Crowdin target language.
-- Otherwise: call `get_project_progress` first and only process languages where
-  `translationProgress > approvalProgress` (skip the rest — they have nothing to review).
+- Otherwise: call `get_project_progress` (with `limit: 100` so no language is cut off)
+  first and only process languages where `phrases.translated > phrases.approved` (skip the
+  rest — they have nothing to review). Don't compare `translationProgress` vs.
+  `approvalProgress` for this: those are rounded percentages, so a small gap vanishes
+  (confirmed 2026-09-23: ru showed 99/99 with 314 translated vs. 313 approved phrases). The
+  sum of the phrase gaps is the expected total candidate count for step 2.
 
 ## 2. Fetch candidates
 
@@ -255,30 +259,13 @@ executing, and do it in two independently-confirmable batches:
 Never approve a string that failed any check, even if the user only asked to "approve
 what's ready."
 
-## 6. Offer to trigger the Crowdin sync workflow
-
-If any approvals happened in step 5, ask the user whether they want to trigger the
-`.github/workflows/crowdin.yml` GitHub Actions workflow now (`workflow_dispatch`) to pull
-the newly-approved translations into a PR against `main`. This is a repo-visible action
-(runs CI, opens/updates a PR) — always confirm before running it, never trigger it
-automatically just because approvals happened.
-
-If confirmed, run:
-```
-gh workflow run crowdin.yml
-```
-Then report the run — `gh run list --workflow=crowdin.yml --limit 1` to get its URL/status,
-since `workflow_dispatch` doesn't return one directly. The workflow uploads sources,
-downloads translations, and opens/updates a PR from `i18n_main` into `main` titled "New
-Crowdin updates" — mention that to the user rather than assuming they remember what it does.
-
-If no approvals happened this run (e.g. the whole run was report-only, or everything was
-already approved), skip this step — there's nothing new for the workflow to pick up.
-
-## 7. Check the `crowdin/github-action` pin for updates
+## 6. Check the `crowdin/github-action` pin for updates
 
 Run this check every time this skill runs, independent of whether any strings were flagged
-or approved — it's about repo maintenance, not the translation review itself.
+or approved — it's about repo maintenance, not the translation review itself. It runs
+**before** the workflow trigger in step 7 on purpose: a `workflow_dispatch` run uses the
+workflow file as it exists on the remote default branch, so a pin bump only takes effect for
+this run's sync if it's committed and pushed first.
 
 `.github/workflows/crowdin.yml` pins `crowdin/github-action` (and `actions/checkout`) to a
 full commit SHA with a `# vX.Y.Z` trailer comment, per the project's SHA-pinning convention
@@ -299,13 +286,36 @@ release exists:
    report it to the user, e.g. "crowdin/github-action is pinned to v2.16.4, but v3.0.2 is
    available." Note if it looks like a major version bump — that may carry breaking changes
    worth a changelog check before updating, not just a mechanical SHA swap.
-5. If the user wants to update, edit the `uses:` line to the new SHA and version comment.
-   This edits a workflow file that affects CI on push — confirm with the user before editing,
-   and don't commit/push it as part of this skill; leave that to the user's normal review
-   flow for the change.
+5. If the user wants to update, edit the `uses:` line to the new SHA and version comment,
+   then — as a separate confirmation, since it pushes a CI-affecting change — offer to
+   commit and push it to the default branch so step 7's run picks it up. Stage **only**
+   `.github/workflows/crowdin.yml` (the working tree may hold unrelated changes), use a
+   message like `ci(crowdin): bump crowdin/github-action to vX.Y.Z`, and `git push`. If the
+   user declines the push, tell them step 7's run will still use the old pin.
 
 The same two `gh api` calls work for any other SHA-pinned action in the workflow (e.g.
 `actions/checkout`) — swap in that action's `owner/repo` and current tag.
+
+## 7. Offer to trigger the Crowdin sync workflow
+
+If any approvals happened in step 5, ask the user whether they want to trigger the
+`.github/workflows/crowdin.yml` GitHub Actions workflow now (`workflow_dispatch`) to pull
+the newly-approved translations into a PR against `main`. This is a repo-visible action
+(runs CI, opens/updates a PR) — always confirm before running it, never trigger it
+automatically just because approvals happened. If step 6 edited the pin but it wasn't
+pushed, say so in the question (the run will use the old pin).
+
+If confirmed, run:
+```
+gh workflow run crowdin.yml
+```
+Then report the run — `gh run list --workflow=crowdin.yml --limit 1` to get its URL/status,
+since `workflow_dispatch` doesn't return one directly. The workflow uploads sources,
+downloads translations, and opens/updates a PR from `i18n_main` into `main` titled "New
+Crowdin updates" — mention that to the user rather than assuming they remember what it does.
+
+If no approvals happened this run (e.g. the whole run was report-only, or everything was
+already approved), skip this step — there's nothing new for the workflow to pick up.
 
 ## Known API details (learned from testing 2026-09-09, project 750053)
 
