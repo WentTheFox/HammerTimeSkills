@@ -233,6 +233,18 @@ count of translations where (language = @language:"<lang>" and count of approval
   ("possible corrections") with both texts side by side and which one passes. If the newer
   one passes and the approved one fails, that's a strong signal to switch. If both pass,
   it's a judgement call for the user, not an automatic approval.
+- Keep the cutoff recent. In the first full sweep (2026-09-23, cutoff 2024-01-01), only
+  75 of ~330 hits survived the date filter across 41 languages. Most hits were a
+  translator's own earlier drafts of the approved text.
+- **Do not re-audit every approved translation on each run.** A one-time placeholder/tag
+  audit of all approved translations was done on 2026-09-23. From then on, every approval
+  goes through this skill's four checks, so already-approved strings don't need
+  re-checking. Only repeat a full audit if the user explicitly asks for one. If you do,
+  scope it to source strings containing `:` or `<` (`list_strings` croql
+  `text contains ":" or text contains "<"`). Skip the Laravel vendor files that
+  `crowdin.yml` excludes from download (`validation.php`, `actions.php` and `auth.php`,
+  which were fileIds 60, 40 and 42 in project 750053). That leaves ~35 strings, checked
+  per language with `list_language_translations(approvedOnly: 1, stringIds: ...)`.
 - Switching is `add_approval(<newer translationId>)`. Crowdin keeps one approved translation
   per string per language, so this moves the approval off the old one (verified on 2488).
   It goes in step 5's approval batch, behind the same confirmation.
